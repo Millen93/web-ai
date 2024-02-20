@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8" />
+    <title>AI Assistant 🤓</title>
+    <meta name="viewport" content="initial-scale=1, width=device-width" />
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-Zn538TmTlGzwyVncONtVhAqSfNj/qGGKuZcFnLlF7pI0c2PqG4JhA9ms69xzmJbw" crossorigin="anonymous">
+    <!-- React, ReactDOM, Material-UI, Babel, Marked.js, Google Fonts, and Material Icons scripts -->
+    <script src="https://unpkg.com/react@latest/umd/react.development.js" crossorigin="anonymous"></script>
+    <script src="https://unpkg.com/react-dom@latest/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@mui/material@latest/umd/material-ui.development.js" crossorigin="anonymous"></script>
+    <script src="https://unpkg.com/@babel/standalone@latest/babel.min.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;600;700&display=swap" />
+    <!-- Material Icons -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons" />
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.19.0/font/bootstrap-icons.css" rel="stylesheet">
+</head>
+
+<body class="bg-light">
+    <div id="root"></div>
+    <script>
+        const user_id = "{{ USER_ID }}";
+    </script>
+    <script type="text/babel">
+        {% raw %}
+
+        const { colors, CssBaseline, ThemeProvider, Typography, TextField, Container, createTheme, Box, Skeleton, Snackbar, Alert, Button, CircularProgress, Input } = MaterialUI;
+        const theme = createTheme({ palette: { mode: 'light' } });
+
+        function App() {
+            const [snackbarOpen, setSnackbarOpen] = React.useState(false);
+            const [conversation, setConversation] = React.useState([]);
+            const [question, setQuestion] = React.useState("");
+            const [loading, setLoading] = React.useState(false);
+            const [llm, setLlm] = React.useState("");
+            const serverIp = window.location.hostname;
+            const WS = React.useMemo(() => new WebSocket(`ws://${serverIp}:8000/chat/ws/${user_id}/${llm}`), [llm, user_id]);
+            const [filling, setFilling] = React.useState(false);
+            const temperatureSliderRef = React.useRef(null);
+            const topPSliderRef = React.useRef(null);
+            const maxResponseSliderRef = React.useRef(null);
+
+            React.useEffect(() => {
+                if (!temperatureSliderRef.current || !topPSliderRef.current || !maxResponseSliderRef.current) return;
+
+                const temperatureSlider = temperatureSliderRef.current;
+                const temperatureValue = document.getElementById('temperatureValue');
+                temperatureValue.textContent = temperatureSlider.value;
+                temperatureSlider.addEventListener('input', () => {
+                    temperatureValue.textContent = temperatureSlider.value;
+                });
+
+                const topPSlider = topPSliderRef.current;
+                const topPValue = document.getElementById('topPValue');
+                topPValue.textContent = topPSlider.value;
+                topPSlider.addEventListener('input', () => {
+                    topPValue.textContent = topPSlider.value;
+                });
+
+                const maxResponseSlider = maxResponseSliderRef.current;
+                const maxResponseValue = document.getElementById('maxResponseValue');
+                maxResponseValue.textContent = maxResponseSlider.value;
+                maxResponseSlider.addEventListener('input', () => {
+                    maxResponseValue.textContent = maxResponseSlider.value;
+                });
+            }, []);
+
+            const startFillAnimation = () => {
+                setFilling(true);
+                setTimeout(() => {
+                    setFilling(false);
+                }, 2000);
+            };
+
+            const handleFileChange = (e) => {
+                e.preventDefault();
+
+                if (e.target.files.length > 0) {
+                    const file = e.target.files[0];
+                    const formData = new FormData();
+                    formData.append('file', file);
+
+                    fetch('http://localhost:8000/chat/upload/', {
+                        method: 'POST',
+                        body: formData
+                    })
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error('Failed to upload file');
+                        }
+                    })
+                    .catch(error => {
+                        console.error('Error uploading file:', error);
+                    });
+
+                    startFillAnimation();
+                }
+            };
+
+
+            const handleButtonClick = (modelName) => {
+                if (!modelName) {
+                    setSnackbarOpen(true);
+                    return;
+                }
+                WS.close()
+                setLlm(modelName);
+                setConversation([]);
+                setQuestion("");
+                setLoading(false);
+
+                setSnackbarOpen(false);
+            };
+
+
+            React.useEffect(() => {
+                if (!llm) {
+                    setSnackbarOpen(true);
+                    return;
+                }
+
+                WS.onmessage = (event) => {
+                    setLoading(false);
+                    if (llm === "openjourney") {
+                      const imageUrl = URL.createObjectURL(event.data);
+                      const newMessage = {
+                          id: conversation.length + 1,
+                          text: <img src={imageUrl} alt="Received image" />,
+                          type: "received",
+                      };
+                      setConversation([...conversation, newMessage]);
+                    } else {
+                        const newMessage = { id: conversation.length + 1, text: marked.parse(event.data), type: "received" };
+                        setConversation([...conversation, newMessage]);
+                    }
+                };
+            }, [WS, conversation, llm]);
+
+            const modelButtons = [
+                { name: 'blenderbot-400M-distill', label: 'Conversation' },
+                { name: 'zephyr-7b-beta', label: 'helpful assistant' },
+                { name: 'Everyone-Coder-4x7b-Base-GPTQ', label: 'Code generation' },
+                { name: 'Undefined', label: 'Code review' },
+                { name: 'PaddleOCR', label: 'Image to text (OCR)' },
+                { name: 'openjourney', label: 'Text to image' },
+            ];
+
+            return (
+                <Container maxWidth="lg">
+                    <div className="icon-column">
+                        <Typography variant="h4" component="h1" gutterBottom style={{ color: 'black', marginBottom: '48px' }}>
+                            Models
+                        </Typography>
+                        {modelButtons.map((button) => (
+                            <Button key={button.name} variant="contained" color="primary" onClick={() => handleButtonClick(button.name)}>
+                                {button.label}
+                            </Button>
+                        ))}
+                    </div>
+
+                    <div className="icon-column-right">
+                        <div class="slider-group">
+                            <label for="temperatureSlider">Temperature:</label>
+                            <input ref={temperatureSliderRef} type="range" min="0.0" max="1.0" step="0.01" id="temperatureSlider" class="slider" />
+                            <span class="slider-value" id="temperatureValue">0.5</span>
+                        </div>
+
+                        <div class="slider-group">
+                            <label for="topPSlider">Top P:</label>
+                            <input ref={topPSliderRef} type="range" min="0.0" max="1.0" step="0.01" id="topPSlider" class="slider" />
+                            <span class="slider-value" id="topPValue">0.5</span>
+                        </div>
+
+                        <div class="slider-group">
+                            <label for="maxResponseSlider">Max Response:</label>
+                            <input ref={maxResponseSliderRef} type="range" min="0" max="1000" id="maxResponseSlider" class="slider" />
+                            <span class="slider-value" id="maxResponseValue">500</span>
+                        </div>
+                    </div>
+
+                    {llm && (
+                        <Box sx={{ my: 4, position: 'relative', right: '80px' }}>
+                            <Typography variant="h4" component="h1" gutterBottom style={{ marginTop: '48px' }}>
+                                Assistant {llm}
+                            </Typography>
+                            <div class="input-file-container">
+                                <label className="input-file-icon" htmlFor="file-input">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="50" height="50" className={`bi bi-file-earmark-plus ${filling && 'filling'}`} viewBox="0 0 16 16">
+                                        <path d="M8 6.5a.5.5 0 0 1 .5.5v1.5H10a.5.5 0 0 1 0 1H8.5V11a.5.5 0 0 1-1 0V9.5H6a.5.5 0 0 1 0-1h1.5V7a.5.5 0 0 1 .5-.5" />
+                                        <path d="M14 4.5V14a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V2a2 2 0 0 1 2-2h5.5zm-3 0A1.5 1.5 0 0 1 9.5 3V1H4a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1V4.5z" />
+                                    </svg>
+                                </label>
+                                <form action="http://localhost:8000/chat/upload" method="POST" enctype="multipart/form-data">
+                                  <input id="file-input" style={{ display: "none" }} type="file" className="file-input-label" onChange={handleFileChange} />
+                                </form>
+                            </div>
+                            <TextField
+                                id="outlined-basic"
+                                label="Ask me Anything"
+                                variant="outlined"
+                                style={{ width: '68%', bottom: 5, position: 'fixed' }}
+                                value={question}
+                                disabled={loading}
+                                onChange={(e) => setQuestion(e.target.value)}
+                                onKeyUp={(e) => {
+                                    setLoading(false);
+                                    if (e.key === "Enter") {
+                                        setConversation([...conversation, { id: conversation.length + 1, text: question, type: "sent", }]);
+                                        setLoading(true);
+                                        WS.send(question);
+                                    }
+                                }}
+                            />
+
+                        </Box>
+                    )}
+                    <div className="conversation-container">
+                        <div className="conversation">
+                            {conversation.map((message) => (
+                                <div key={message.id} className={message.type === "received" ? "received" : "sent"}>
+                                    {message.type === "received" ? <strong>Assistant:</strong> : <><strong>User:</strong> <br /> {}</>}
+                                    {message.type === "received" && typeof message.text === "string" ? (
+                                          <Typography dangerouslySetInnerHTML={{ __html: message.text }} />
+                                    ) : (
+                                        message.text
+                                    )}
+                                </div>
+                            ))}
+                            {loading && <Skeleton />}
+                        </div>
+                    </div>
+                    <Snackbar
+                        open={snackbarOpen}
+                        autoHideDuration={6000}
+                        onClose={() => setSnackbarOpen(false)}
+                        anchorOrigin={{ vertical: 'top', horizontal: 'center' }}
+                    >
+                        <Alert onClose={() => setSnackbarOpen(false)} severity="warning">
+                            Please choose a model!
+                        </Alert>
+                    </Snackbar>
+                </Container>
+            );
+        }
+
+        ReactDOM.createRoot(document.getElementById('root')).render(
+            <ThemeProvider theme={theme}>
+                <CssBaseline />
+                <App />
+            </ThemeProvider>,
+        );
+        {% endraw %}
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js" integrity="sha384-mQ93GR66B00ZXjt0YO5KlohRA5SY2XofWuCmaR8R7Nqj4yjWx1kA2P9cQI1CHZx" crossorigin="anonymous"></script>
+    <style>
+        {% raw %}
+
+        .input-file-container {
+            position: fixed;
+            bottom: 0;
+            right: 270px;
+            padding: 0px;
+        }
+
+        .bi-file-earmark-plus.filling {
+            animation: fill 2s forwards;
+        }
+
+        @keyframes fill {
+            0% {
+                fill: transparent;
+            }
+            100% {
+                fill: #007bff;
+            }
+        }
+
+        .file-input-label {
+            display: none;
+        }
+
+        .input-group-text {
+            cursor: pointer;
+        }
+
+        .conversation-container {
+            max-height: 75vh;
+            overflow-y: auto;
+            margin-bottom: 20px;
+        }
+
+        .conversation {
+            padding-right: 16px;
+        }
+
+        .icon-column {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: fixed;
+            left: 0;
+            top: 0;
+            height: 100vh;
+            background-color: #f2f2f2;
+            padding: 50px;
+            z-index: 1;
+            box-shadow: -5px 0 5px rgba(0, 0, 0, 0.1);
+        }
+
+        .icon-column button {
+            width: 150px;
+            margin-bottom: 15px;
+            background-color: #d9d9d9;
+            color: black;
+            border: none;
+            padding: 10px 20px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+
+        .icon-column-right {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: fixed;
+            right: 0;
+            top: 0;
+            height: 100vh;
+            background-color: #f2f2f2;
+            padding: 0px;
+            z-index: 1;
+            box-shadow: -5px 0 5px rgba(0, 0, 0, 0.1);
+        }
+
+        .icon-column button:hover {
+            background-color: #bebcbe;
+        }
+
+
+
+        .received {
+            background-color: #efedef;
+            padding: 8px;
+            margin-bottom: 8px;
+            border-radius: 8px;
+        }
+
+        .sent {
+            background-color: #f6f5f6;
+            padding: 8px;
+            margin-bottom: 8px;
+            border-radius: 8px;
+
+        }
+        .custom-upload-btn {
+            display: inline-block;
+            width: 150px;
+            padding: 10px 15px;
+            font-size: 14px;
+            font-weight: bold;
+            color: #fff;
+            background-color: #3f51b5;
+            cursor: pointer;
+            border-radius: 4px;
+            text-align: center;
+        }
+
+        .custom-upload-btn:hover {
+            background-color: #303f9f;
+        }
+
+        .file-input-label {
+            margin-top: 10px;
+            display: inline-block;
+        }
+
+
+        .slider-container {
+            max-width: 400px;
+            margin: auto;
+        }
+
+        .slider-group {
+            margin-bottom: 20px;
+        }
+
+        .slider {
+            width: 100%;
+            margin-top: 8px;
+        }
+
+        label {
+            display: block;
+            margin-top: 10px;
+        }
+
+        .slider-value {
+            display: inline-block;
+            margin-left: 10px;
+            font-weight: bold;
+            opacity: 1;
+            transition: opacity 0.5s ease-in-out;
+        }
+
+        .slider-value.hidden {
+            opacity: 0;
+        }
+
+      {% endraw %}
+    </style>
+</body>
+
+</html>

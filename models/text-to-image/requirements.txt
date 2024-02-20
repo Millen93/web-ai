@@ -1,0 +1,10 @@
+diffusers
+transformers
+safetensors
+sentencepiece
+accelerate
+bitsandbytes
+torch
+huggingface_hub
+FastAPI
+uvicorn
