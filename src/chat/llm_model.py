@@ -30,7 +30,7 @@ async def get_coder_responses(prompt):
             return json_data.get('generated_text')
 
 async def get_image_responses(prompt):
-    url = 'http://172.18.0.5:7000'
+    url = 'http://172.18.0.4:7000'
     data = {"prompt": prompt}
     async with aiohttp.ClientSession() as session:
         async with session.post(url, json=data) as response:

@@ -96,7 +96,7 @@ async def websocket_endpoint(websocket: WebSocket, llm: str, user_id: int):
                 await websocket.send_text(text)
                 await add_messages_to_db(user_id, f"USER  prompt: {message + docs}, AI answer: {text}", llm)
             elif llm == "Everyone-Coder-4x7b-Base-GPTQ":
-                text = await generate_coder(message)
+                text = await generate_coder(message + docs)
                 await websocket.send_text(text)
                 await add_messages_to_db(user_id, f"USER  prompt: {message + docs}, AI answer: {text}", llm)
             elif llm == "openjourney":
